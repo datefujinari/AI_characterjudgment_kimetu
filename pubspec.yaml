@@ -16,6 +16,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   camera: ^0.10.6   # カメラ撮影/プレビュー用（例）
   image_picker: ^1.1.2  # 端末ギャラリーから画像選択（例）
+  file_picker: ^8.0.0+1  # macOS対応ファイルピッカー
+  # tflite_flutter: ^0.11.0  # TensorFlow Lite Flutter用（一時的に無効化）
 
 
 dev_dependencies:
@@ -28,3 +30,7 @@ dev_dependencies:
 flutter:
 
   uses-material-design: true
+
+  assets:
+    - assets/
+    - assets/models/

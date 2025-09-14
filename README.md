@@ -1,5 +1,30 @@
 # AI Character Judgment – Kimetsu (Flutter + Teachable Machine)
 
+「**鬼滅の刃**」の主要キャラクター（例：竈門炭治郎／竈門禰豆子／我妻善逸／嘴平伊之助）を、スマホやPCのカメラ画像から **TensorFlow Lite** モデルで分類するFlutterアプリです。  
+**Teachable Machine** を使うことで、学習～モデル書き出しまでを GUI で数分で完了できます。
+
+---
+
+## 🚧 現在の実装状況
+
+### ✅ 完了済み
+- Flutter Cupertino デザインによるUI実装
+- 画像選択・プレビュー機能（テスト画像対応）
+- TensorFlow Lite モデル読み込み準備
+- assets フォルダ構成とファイル配置
+- macOS 対応の基本実装
+
+### 🔄 開発中
+- 画像選択機能の安定化（file_pickerプラグイン）
+- TensorFlow Lite 推論機能の統合
+- クロスプラットフォーム対応
+
+### 📱 対応予定クラス
+- 竈門炭治郎  
+- 竈門禰豆子  
+- 我妻善逸  
+- 嘴平伊之助ment – Kimetsu (Flutter + Teachable Machine)
+
 「**鬼滅の刃**」の主要キャラクター（例：竈門炭治郎／竈門禰豆子／我妻善逸／嘴平伊之助）を、スマホやPCのカメラ画像から **TensorFlow Lite** モデルで分類するデモアプリです。  
 **Teachable Machine** を使うことで、学習～モデル書き出しまでを GUI で数分で完了できます。  
 目標：**30分で“動くもの”を作る**（最小構成のMVP）
@@ -20,205 +45,140 @@
 
 ---
 
-## 🏃 30分クイックスタート
+## 🏃 セットアップ手順
 
-### 1) モデルを用意（Teachable Machine）
+### 1. モデルを用意（Teachable Machine）
 1. [Teachable Machine](https://teachablemachine.withgoogle.com/) → **Image Project** を作成  
 2. 左側の **Class** を上記4キャラ名に変更  
 3. 各クラスに画像（10〜20枚以上推奨）をドラッグ&ドロップ（※自分で権利を確認できる画像を使用）  
 4. **Train** をクリック（数分で完了）  
 5. **Export** → **TensorFlow → Download my model**（TFLite）  
-   - 生成物例：`model.tflite` と `labels.txt`（または `metadata` 付き）
+   - 生成物：`model.tflite` と `labels.txt`
 
-> 画像収集を短時間で済ませたい場合は、まずは **数枚** でテスト→動いたら後からデータを増やして精度改善しましょう。
-
-### 2) Flutter プロジェクトに追加
-- 本リポジトリをクローン後、以下を追加
-
-```
-pubspec.yaml
-├─ flutter:
-│  ├─ assets:
-│  │  ├─ assets/tflite/model.tflite
-│  │  └─ assets/tflite/labels.txt
-```
-
-- 依存関係を追加して取得
+### 2. Flutter プロジェクトの準備
 
 ```bash
-flutter pub add tflite_flutter image
+# リポジトリをクローン
+git clone https://github.com/datefujinari/AI_characterjudgment_kimetu.git
+cd AI_characterjudgment_kimetu
+
+# 依存関係をインストール
 flutter pub get
 ```
 
-- モデル/ラベルを `assets/tflite/` に配置し、`pubspec.yaml` に assets を登録
+### 3. モデルファイルの配置
+生成したモデルファイルを以下の場所に配置：
 
-```yaml
-flutter:
-  uses-material-design: true
-  assets:
-    - assets/tflite/model.tflite
-    - assets/tflite/labels.txt
+```
+assets/
+└── models/
+    ├── model.tflite    # Teachable Machine から生成
+    └── labels.txt      # Teachable Machine から生成
 ```
 
-### 3) 最小の推論コード（例）
+### 4. アプリの実行
 
-```dart
-// lib/main.dart
-import 'dart:io';
-import 'dart:math';
-import 'dart:typed_data';
-import 'package:flutter/material.dart';
-import 'package:image/image.dart' as img;
-import 'package:tflite_flutter/tflite_flutter.dart';
+```bash
+# macOS で実行
+flutter run -d macos
 
-void main() => runApp(const KimetsuApp());
+# iOS シミュレータで実行
+flutter run -d ios
 
-class KimetsuApp extends StatelessWidget {
-  const KimetsuApp({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: ClassifyPage(),
-      debugShowCheckedModeBanner: false,
-    );
-  }
-}
-
-class ClassifyPage extends StatefulWidget {
-  const ClassifyPage({super.key});
-  @override
-  State<ClassifyPage> createState() => _ClassifyPageState();
-}
-
-class _ClassifyPageState extends State<ClassifyPage> {
-  late Interpreter _interpreter;
-  late List<String> _labels;
-  bool _ready = false;
-  String _result = 'No result';
-  img.Image? _preview;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadModel();
-  }
-
-  Future<void> _loadModel() async {
-    _interpreter = await Interpreter.fromAsset('assets/tflite/model.tflite');
-    _labels = await DefaultAssetBundle.of(context)
-        .loadString('assets/tflite/labels.txt')
-        .then((s) => s.split('\n').where((e) => e.trim().isNotEmpty).toList());
-    setState(() => _ready = true);
-  }
-
-  // 画像を 224x224 にリサイズし、[0,1] 正規化して [1,224,224,3] float32 に変換
-  Float32List _preprocess(img.Image image, {int size = 224}) {
-    final resized = img.copyResize(image, width: size, height: size);
-    final buffer = Float32List(size * size * 3);
-    int i = 0;
-    for (int y = 0; y < size; y++) {
-      for (int x = 0; x < size; x++) {
-        final pixel = resized.getPixel(x, y);
-        buffer[i++] = img.getRed(pixel) / 255.0;
-        buffer[i++] = img.getGreen(pixel) / 255.0;
-        buffer[i++] = img.getBlue(pixel) / 255.0;
-      }
-    }
-    return buffer;
-  }
-
-  Future<void> _runDemoFromAsset() async {
-    // デモ用：assets の画像を1枚読み込み（実運用はカメラ/ギャラリーで取得）
-    final bytes = await DefaultAssetBundle.of(context).load('assets/demo.jpg');
-    final image = img.decodeImage(bytes.buffer.asUint8List());
-    if (image == null) return;
-
-    setState(() => _preview = image);
-
-    final input = _preprocess(image);
-    final inputShape = _interpreter.getInputTensor(0).shape; // [1,224,224,3] など
-    final outputShape = _interpreter.getOutputTensor(0).shape; // [1,numClasses]
-
-    final inputBuffer = input.reshape([1, 224, 224, 3]);
-    final outputBuffer = List.filled(outputShape.reduce((a, b) => a * b), 0.0)
-        .reshape([1, outputShape.last]);
-
-    _interpreter.run(inputBuffer, outputBuffer);
-    final scores = outputBuffer[0] as List<double>;
-
-    int best = 0;
-    double bestScore = -1;
-    for (int i = 0; i < scores.length; i++) {
-      if (scores[i] > bestScore) {
-        bestScore = scores[i];
-        best = i;
-      }
-    }
-    final label = (best < _labels.length) ? _labels[best] : 'Unknown';
-    setState(() => _result = '$label  ${(bestScore * 100).toStringAsFixed(1)}%');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Kimetsu Classifier')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            if (!_ready) const Text('Loading model...'),
-            if (_preview != null)
-              Expanded(child: Image.memory(Uint8List.fromList(img.encodeJpg(_preview!)))),
-            const SizedBox(height: 8),
-            Text(_result, style: const TextStyle(fontSize: 18)),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _ready ? _runDemoFromAsset : null,
-              child: const Text('Run Demo Inference'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+# Android エミュレータで実行
+flutter run -d android
 ```
 
 ---
 
-## 📁 ディレクトリ構成（例）
+## 💻 現在の実装
 
+### 主要な機能
+- **Cupertino Design**: iOS風の美しいUI
+- **画像選択**: file_picker による画像ファイル選択
+- **画像プレビュー**: 選択した画像の表示機能
+- **テスト画像**: デバッグ用のサンプル画像機能
+
+### 技術スタック
+- **Framework**: Flutter 3.32.8
+- **UI**: Cupertino (iOS風デザイン)
+- **ML**: tflite_flutter ^0.11.0
+- **ファイル選択**: file_picker ^8.0.0+1
+- **画像処理**: image_picker ^1.1.2
+
+### アーキテクチャ
 ```
-AI_characterjudgment_kimetu/
-├─ lib/
-│  └─ main.dart
-├─ assets/
-│  ├─ tflite/
-│  │  ├─ model.tflite
-│  │  └─ labels.txt
-│  └─ demo.jpg
-├─ pubspec.yaml
-└─ README.md
+lib/
+└── main.dart              # メインアプリケーション
+assets/
+└── models/
+    ├── model.tflite       # TensorFlow Lite モデル
+    └── labels.txt         # クラスラベル
 ```
 
 ---
 
-## 🛠 今後の拡張案
+## � 今後の開発計画
 
-- カメラプレビューに推論結果をリアルタイム表示  
-- Top-3のラベル表示やしきい値設定  
-- モデルの量子化（INT8）で速度最適化  
-- データ収集・学習をスクリプト化  
+### Phase 1: 基本機能完成
+- [x] Flutter プロジェクト作成
+- [x] UI デザイン実装
+- [x] 画像選択機能実装
+- [ ] TensorFlow Lite 推論機能統合
+- [ ] クロスプラットフォーム対応改善
+
+### Phase 2: 機能拡張
+- [ ] カメラプレビューからのリアルタイム推論
+- [ ] Top-3 予測結果表示
+- [ ] 推論結果の信頼度しきい値設定
+- [ ] 履歴機能
+
+### Phase 3: 最適化
+- [ ] モデルの量子化（INT8）で速度向上
+- [ ] バッチ処理対応
+- [ ] メモリ使用量最適化
+
+---
+
+## 🔧 開発者向け情報
+
+### 既知の問題
+- macOS での file_picker プラグインの安定性
+- TensorFlow Lite ネイティブライブラリの動的読み込み
+- Web プラットフォームでの dart:ffi 非対応
+
+### デバッグ方法
+1. **テスト画像ボタン**を使用して基本的な画像表示をテスト
+2. デバッグコンソールでプラグインの動作ログを確認
+3. プラットフォーム固有の問題は `Platform.is*` で分岐対応  
 
 ---
 
 ## ⚖️ 注意事項
 
-- キャラクター画像には著作権があります。学習は個人利用範囲にとどめ、公開時は自作素材などを使用してください。  
-- 個人写真を使う場合はプライバシーに配慮してください。  
+- **著作権**: キャラクター画像には著作権があります。学習は個人利用範囲にとどめ、公開時は自作素材などを使用してください。  
+- **プライバシー**: 個人写真を使う場合はプライバシーに配慮してください。  
+- **利用規約**: Teachable Machine の利用規約を遵守してください。
 
 ---
 
-## ライセンス
+## 🤝 コントリビューション
 
-MIT（予定）
+Issues や Pull Requests を歓迎します！  
+開発に参加される場合は、まず Issue でディスカッションしてください。
+
+---
+
+## 📄 ライセンス
+
+MIT License
+
+---
+
+## 👨‍💻 開発者
+
+[@datefujinari](https://github.com/datefujinari)
+
+---
+
+*最終更新: 2025年9月14日*
